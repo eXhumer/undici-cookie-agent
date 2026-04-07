@@ -1,0 +1,59 @@
+{
+  "name": "@exhumer/undici-cookie-agent",
+  "version": "1.0.0",
+  "description": "Cookie jar support for undici (v7, v8)",
+  "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "eXhumer",
+    "email": "github@exhumer.cc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eXhumer/undici-cookie-agent"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": ">=20.0.0"
+    },
+    "packageManager": {
+      "name": "npm"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "tough-cookie": ">=6.0.0",
+    "undici": ">=7.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "tough-cookie": "^6.0.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.9.2",
+    "undici": "^8.0.0",
+    "vitest": "^4.1.3"
+  }
+}
