@@ -22,7 +22,9 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=20.0.0"
   },
@@ -42,14 +44,16 @@
     "build": "tsup",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "coverage": "vitest run --coverage"
   },
   "peerDependencies": {
     "tough-cookie": ">=6.0.0",
     "undici": ">=7.0.0"
   },
   "devDependencies": {
-    "@types/node": "^25.5.2",
+    "@types/node": "^25.6.0",
+    "@vitest/coverage-istanbul": "^4.1.4",
     "tough-cookie": "^6.0.1",
     "tsup": "^8.4.0",
     "typescript": "^5.9.2",

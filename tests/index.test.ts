@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { CookieJar } from 'tough-cookie'
-import { request, fetch, Agent } from 'undici'
+import { request, fetch, Agent, upgrade } from 'undici'
 import { CookieAgent, cookie, createCookieAgent } from '../src/index.js'
 import { createTestServer, parseCookieString } from './helpers.js'
 import type { TestServer } from './helpers.js'
@@ -181,6 +181,32 @@ describe('CookieAgent (v7/v8)', () => {
     await request(`${server.baseUrl}/set-cookie`, { dispatcher: agent })
     const cookies = jar.getCookiesSync(`${server.baseUrl}/`)
     expect(cookies.length).toBeGreaterThan(0)
+
+    await agent.close()
+  })
+
+  it('invokes onResponseError when the connection fails', async () => {
+    const jar = new CookieJar()
+    const agent = new CookieAgent({ cookies: { jar } })
+
+    // Port 1 is reserved and will always refuse connections
+    await expect(
+      request('http://localhost:1/', { dispatcher: agent }),
+    ).rejects.toThrow()
+
+    await agent.close()
+  })
+
+  it('handles HTTP upgrade responses via onRequestUpgrade', async () => {
+    const jar = new CookieJar()
+    jar.setCookieSync('session=abc123', server.baseUrl)
+    const agent = new CookieAgent({ cookies: { jar } })
+
+    const { socket } = await upgrade(server.baseUrl, {
+      dispatcher: agent,
+      upgrade: 'websocket',
+    })
+    socket.destroy()
 
     await agent.close()
   })

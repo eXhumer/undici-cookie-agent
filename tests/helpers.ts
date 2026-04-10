@@ -86,6 +86,17 @@ export async function createTestServer(): Promise<{
     res.end('not found')
   })
 
+  // Handle HTTP upgrade requests (e.g. WebSocket) so onRequestUpgrade is reachable
+  httpServer.on('upgrade', (_req, socket) => {
+    socket.write(
+      'HTTP/1.1 101 Switching Protocols\r\n' +
+        'Upgrade: websocket\r\n' +
+        'Connection: Upgrade\r\n' +
+        '\r\n',
+    )
+    socket.destroy()
+  })
+
   httpServer.listen(0)
   await once(httpServer, 'listening')
 

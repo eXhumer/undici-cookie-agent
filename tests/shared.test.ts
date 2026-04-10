@@ -39,6 +39,17 @@ describe('buildUrl', () => {
     const url = buildUrl({ origin: 'https://example.com', path: '/search?q=hello', method: 'GET' })
     expect(url).toBe('https://example.com/search?q=hello')
   })
+
+  it('falls back to string concatenation when URL construction fails', () => {
+    // Empty origin + non-absolute path (e.g. CONNECT tunnel) causes new URL() to throw
+    const url = buildUrl({ origin: '', path: 'tunnel-host:443', method: 'CONNECT' })
+    expect(url).toBe('tunnel-host:443')
+  })
+
+  it('uses empty string when origin is undefined', () => {
+    const url = buildUrl({ path: '/foo', method: 'GET' })
+    expect(url).toBe('/foo')
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -69,6 +80,11 @@ describe('injectCookieHeader', () => {
   it('merges with existing lowercase cookie key', () => {
     const result = injectCookieHeader({ cookie: 'existing=val' }, 'new=2') as Record<string, string>
     expect(result['cookie']).toBe('existing=val; new=2')
+  })
+
+  it('merges with existing cookie key that has an array value', () => {
+    const result = injectCookieHeader({ cookie: ['a=1', 'b=2'] }, 'c=3') as Record<string, string>
+    expect(result['cookie']).toBe('a=1; b=2; c=3')
   })
 
   it('merges with existing uppercase Cookie key and normalises to lowercase', () => {
@@ -130,6 +146,11 @@ describe('extractSetCookiesFromObject', () => {
   it('is case-insensitive for header name', () => {
     const result = extractSetCookiesFromObject({ 'Set-Cookie': 'a=1' })
     expect(result).toEqual(['a=1'])
+  })
+
+  it('returns empty array when set-cookie key is present but value is undefined', () => {
+    const result = extractSetCookiesFromObject({ 'set-cookie': undefined })
+    expect(result).toEqual([])
   })
 })
 

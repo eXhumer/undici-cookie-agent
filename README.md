@@ -1,5 +1,9 @@
 # undici-cookie-agent
 
+[![CI](https://github.com/eXhumer/undici-cookie-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/eXhumer/undici-cookie-agent/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/eXhumer/undici-cookie-agent/branch/main/graph/badge.svg)](https://codecov.io/gh/eXhumer/undici-cookie-agent)
+[![npm](https://img.shields.io/npm/v/@exhumer/undici-cookie-agent)](https://www.npmjs.com/package/@exhumer/undici-cookie-agent)
+
 Cookie jar support for [undici](https://github.com/nodejs/undici) v7 and v8, powered by [tough-cookie](https://github.com/salesforce/tough-cookie).
 
 Automatically stores `Set-Cookie` headers from responses and sends the appropriate `Cookie` header on subsequent requests - with no changes to your existing undici setup beyond swapping in an agent.
