@@ -34,7 +34,7 @@
   "devEngines": {
     "runtime": {
       "name": "node",
-      "version": ">=20.0.0"
+      "version": ">=22.19.0"
     },
     "packageManager": {
       "name": "npm"
