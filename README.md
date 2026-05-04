@@ -10,7 +10,7 @@ Automatically stores `Set-Cookie` headers from responses and sends the appropria
 
 ## Requirements
 
-- Node.js 20+
+- Node.js 22+
 - `undici` ≥ 7.0.0 (peer dependency)
 - `tough-cookie` ≥ 6.0.0 (peer dependency)
 
