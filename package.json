@@ -1,6 +1,6 @@
 {
   "name": "@exhumer/undici-cookie-agent",
-  "version": "1.0.9",
+  "version": "2.0.0",
   "description": "Cookie jar support for undici (v7, v8)",
   "type": "module",
   "license": "MIT",
