@@ -160,6 +160,10 @@ export class CookieAgent extends Agent {
 // createCookieAgent - mixin for arbitrary Agent subclasses
 // ---------------------------------------------------------------------------
 
+type CookieWrappedAgentClass<TBase extends new (...args: any[]) => Agent> = {
+  [Key in keyof TBase]: TBase[Key]
+} & (new (...args: any[]) => InstanceType<TBase>)
+
 /**
  * Wraps *any* undici Agent subclass with cookie handling.
  *
@@ -176,7 +180,7 @@ export class CookieAgent extends Agent {
  */
 export function createCookieAgent<
   TBase extends new (...args: any[]) => Agent,
->(Base: TBase) {
+>(Base: TBase): CookieWrappedAgentClass<TBase> {
   return class CookieWrappedAgent extends Base {
     readonly #jar: CookieJar
 
@@ -204,7 +208,7 @@ export function createCookieAgent<
         new CookieHandler(handler, url, this.#jar),
       )
     }
-  }
+  } as CookieWrappedAgentClass<TBase>
 }
 
 // ---------------------------------------------------------------------------

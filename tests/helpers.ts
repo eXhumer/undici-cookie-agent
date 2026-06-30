@@ -25,6 +25,7 @@ export interface RequestRecord {
  *   GET /echo-cookies          - echoes the received Cookie header as JSON
  *   GET /redirect              - 302 → /echo-cookies (tests cookies across redirects)
  *   GET /set-and-redirect      - sets a cookie AND redirects to /echo-cookies
+ *   GET /abort                 - terminates the connection without a response
  */
 export async function createTestServer(): Promise<{
   server: TestServer
@@ -82,12 +83,21 @@ export async function createTestServer(): Promise<{
       return
     }
 
+    if (url.pathname === '/abort') {
+      req.socket.destroy()
+      return
+    }
+
     res.writeHead(404)
     res.end('not found')
   })
 
   // Handle HTTP upgrade requests (e.g. WebSocket) so onRequestUpgrade is reachable
-  httpServer.on('upgrade', (_req, socket) => {
+  httpServer.on('upgrade', (req, socket) => {
+    requests.push({
+      url: req.url ?? '/',
+      headers: req.headers as Record<string, string | string[] | undefined>,
+    })
     socket.write(
       'HTTP/1.1 101 Switching Protocols\r\n' +
         'Upgrade: websocket\r\n' +
@@ -97,12 +107,12 @@ export async function createTestServer(): Promise<{
     socket.destroy()
   })
 
-  httpServer.listen(0)
+  httpServer.listen(0, '127.0.0.1')
   await once(httpServer, 'listening')
 
   const address = httpServer.address() as { port: number }
   const port = address.port
-  const baseUrl = `http://localhost:${port}`
+  const baseUrl = `http://127.0.0.1:${port}`
 
   return {
     server: {

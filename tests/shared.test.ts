@@ -2,7 +2,7 @@
  * Unit tests for the shared utility functions.
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   buildUrl,
   injectCookieHeader,
@@ -10,6 +10,7 @@ import {
   persistCookies,
 } from '../src/shared.js'
 import { CookieJar } from 'tough-cookie'
+import type { Dispatcher } from 'undici'
 
 // ---------------------------------------------------------------------------
 // buildUrl
@@ -31,7 +32,10 @@ describe('buildUrl', () => {
   })
 
   it('defaults path to / when missing', () => {
-    const url = buildUrl({ origin: 'https://example.com', method: 'GET' })
+    const url = buildUrl({
+      origin: 'https://example.com',
+      method: 'GET',
+    } as Dispatcher.DispatchOptions)
     expect(url).toBe('https://example.com/')
   })
 
@@ -88,8 +92,10 @@ describe('injectCookieHeader', () => {
   })
 
   it('merges with existing uppercase Cookie key and normalises to lowercase', () => {
-    const result = injectCookieHeader({ Cookie: 'existing=val' }, 'new=2') as Record<string, string>
+    const headers = { Cookie: 'existing=val' }
+    const result = injectCookieHeader(headers, 'new=2') as Record<string, string>
     expect(result['cookie']).toBe('existing=val; new=2')
+    expect(headers).toEqual({ Cookie: 'existing=val' })
   })
 
   it('preserves other headers while adding cookie', () => {
@@ -109,11 +115,13 @@ describe('injectCookieHeader', () => {
   })
 
   it('merges with existing cookie in flat string[] headers', () => {
-    const result = injectCookieHeader(['cookie', 'a=1', 'x-foo', 'bar'], 'b=2') as string[]
+    const headers = ['cookie', 'a=1', 'x-foo', 'bar']
+    const result = injectCookieHeader(headers, 'b=2') as string[]
     expect(result[0]).toBe('cookie')
     expect(result[1]).toBe('a=1; b=2')
     expect(result[2]).toBe('x-foo')
     expect(result[3]).toBe('bar')
+    expect(headers).toEqual(['cookie', 'a=1', 'x-foo', 'bar'])
   })
 
   it('is case-insensitive for Cookie key in flat array', () => {
@@ -181,5 +189,18 @@ describe('persistCookies', () => {
     persistCookies(jar, 'https://example.com/', ['!!!invalid!!!'])
     const cookies = jar.getCookiesSync('https://example.com/')
     expect(cookies).toHaveLength(0)
+  })
+
+  it('continues persisting when the cookie jar throws', () => {
+    const setCookieSync = vi.fn()
+      .mockImplementationOnce(() => {
+        throw new Error('store failed')
+      })
+      .mockReturnValue(undefined)
+    const jar = { setCookieSync } as unknown as CookieJar
+
+    expect(() => persistCookies(jar, 'https://example.com/', ['a=1', 'b=2']))
+      .not.toThrow()
+    expect(setCookieSync).toHaveBeenCalledTimes(2)
   })
 })

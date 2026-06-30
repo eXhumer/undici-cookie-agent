@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "declarationMap": false,
+    "isolatedDeclarations": false,
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["tests/**/*.test.ts", "tests/helpers.ts"],
+  "exclude": ["node_modules", "dist", "tests/types"]
+}

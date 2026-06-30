@@ -11,17 +11,41 @@ import { CookieJar } from 'tough-cookie'
 import { request, fetch, Agent, upgrade } from 'undici'
 import { CookieAgent, cookie, createCookieAgent } from '../src/index.js'
 import { createTestServer, parseCookieString } from './helpers.js'
-import type { TestServer } from './helpers.js'
+import type { Dispatcher } from 'undici'
+import type { RequestRecord, TestServer } from './helpers.js'
 
 let server: TestServer
+let requests: RequestRecord[]
+let dispatchers: Dispatcher[]
 
 beforeEach(async () => {
-  ;({ server } = await createTestServer())
+  server = undefined!
+  requests = []
+  dispatchers = []
+  ;({ server, requests } = await createTestServer())
 })
 
 afterEach(async () => {
-  await server.close()
+  const results = await Promise.allSettled(
+    dispatchers.map((dispatcher) => dispatcher.close()),
+  )
+
+  if (server) await server.close()
+
+  const errors = results
+    .filter(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    )
+    .map((result) => result.reason)
+  if (errors.length > 0) {
+    throw new AggregateError(errors, 'Dispatcher cleanup failed')
+  }
 })
+
+function track<T extends Dispatcher>(dispatcher: T): T {
+  dispatchers.push(dispatcher)
+  return dispatcher
+}
 
 // ---------------------------------------------------------------------------
 // CookieAgent - basic cookie storage and retrieval
@@ -30,7 +54,7 @@ afterEach(async () => {
 describe('CookieAgent (v7/v8)', () => {
   it('stores Set-Cookie headers in the jar', async () => {
     const jar = new CookieJar()
-    const agent = new CookieAgent({ cookies: { jar } })
+    const agent = track(new CookieAgent({ cookies: { jar } }))
 
     await request(`${server.baseUrl}/set-cookie`, { dispatcher: agent })
 
@@ -39,12 +63,11 @@ describe('CookieAgent (v7/v8)', () => {
     expect(cookies[0].key).toBe('session')
     expect(cookies[0].value).toBe('abc123')
 
-    await agent.close()
   })
 
   it('sends stored cookies on subsequent requests', async () => {
     const jar = new CookieJar()
-    const agent = new CookieAgent({ cookies: { jar } })
+    const agent = track(new CookieAgent({ cookies: { jar } }))
 
     // First request: server sets a cookie
     await request(`${server.baseUrl}/set-cookie`, { dispatcher: agent })
@@ -58,12 +81,11 @@ describe('CookieAgent (v7/v8)', () => {
     const cookies = parseCookieString(data.cookie)
     expect(cookies['session']).toBe('abc123')
 
-    await agent.close()
   })
 
   it('stores multiple Set-Cookie headers', async () => {
     const jar = new CookieJar()
-    const agent = new CookieAgent({ cookies: { jar } })
+    const agent = track(new CookieAgent({ cookies: { jar } }))
 
     await request(`${server.baseUrl}/set-cookie-multi`, { dispatcher: agent })
 
@@ -74,12 +96,11 @@ describe('CookieAgent (v7/v8)', () => {
     expect(names).toContain('theme')
     expect(names).toContain('lang')
 
-    await agent.close()
   })
 
   it('sends multiple cookies as a single Cookie header', async () => {
     const jar = new CookieJar()
-    const agent = new CookieAgent({ cookies: { jar } })
+    const agent = track(new CookieAgent({ cookies: { jar } }))
 
     await request(`${server.baseUrl}/set-cookie-multi`, { dispatcher: agent })
 
@@ -93,12 +114,11 @@ describe('CookieAgent (v7/v8)', () => {
     expect(cookies['theme']).toBe('dark')
     expect(cookies['lang']).toBe('en')
 
-    await agent.close()
   })
 
   it('merges manually set cookies with jar cookies', async () => {
     const jar = new CookieJar()
-    const agent = new CookieAgent({ cookies: { jar } })
+    const agent = track(new CookieAgent({ cookies: { jar } }))
 
     // Put a cookie in the jar first
     jar.setCookieSync('jar_cookie=from_jar', `${server.baseUrl}/`)
@@ -113,12 +133,11 @@ describe('CookieAgent (v7/v8)', () => {
     expect(cookies['jar_cookie']).toBe('from_jar')
     expect(cookies['manual_cookie']).toBe('from_header')
 
-    await agent.close()
   })
 
   it('works with flat string[] headers', async () => {
     const jar = new CookieJar()
-    const agent = new CookieAgent({ cookies: { jar } })
+    const agent = track(new CookieAgent({ cookies: { jar } }))
 
     jar.setCookieSync('flat=yes', `${server.baseUrl}/`)
 
@@ -130,13 +149,26 @@ describe('CookieAgent (v7/v8)', () => {
     const cookies = parseCookieString(data.cookie)
 
     expect(cookies['flat']).toBe('yes')
+    expect(requests.at(-1)?.headers['x-custom']).toBe('value')
+  })
 
-    await agent.close()
+  it('respects cookie path scoping', async () => {
+    const jar = new CookieJar()
+    const agent = track(new CookieAgent({ cookies: { jar } }))
+
+    jar.setCookieSync('private=yes; Path=/private', server.baseUrl)
+
+    const { body } = await request(`${server.baseUrl}/echo-cookies`, {
+      dispatcher: agent,
+    })
+    const data = await body.json() as { cookie: string }
+
+    expect(data.cookie).toBe('')
   })
 
   it('does not mix cookies between different origins', async () => {
     const jar = new CookieJar()
-    const agent = new CookieAgent({ cookies: { jar } })
+    const agent = track(new CookieAgent({ cookies: { jar } }))
 
     // Set a cookie scoped to a different domain
     jar.setCookieSync('other=1', 'https://other.example.com/')
@@ -149,12 +181,11 @@ describe('CookieAgent (v7/v8)', () => {
     // The `other` cookie should NOT be sent to localhost
     expect(data.cookie).toBe('')
 
-    await agent.close()
   })
 
   it('shares the jar between multiple request calls', async () => {
     const jar = new CookieJar()
-    const agent = new CookieAgent({ cookies: { jar } })
+    const agent = track(new CookieAgent({ cookies: { jar } }))
 
     await request(`${server.baseUrl}/set-cookie`, { dispatcher: agent })
     await request(`${server.baseUrl}/set-cookie-multi`, { dispatcher: agent })
@@ -167,48 +198,46 @@ describe('CookieAgent (v7/v8)', () => {
     expect(names).toContain('theme')
     expect(names).toContain('lang')
 
-    await agent.close()
   })
 
   it('accepts Agent.Options alongside cookie options', async () => {
     const jar = new CookieJar()
     // Pass an Agent option (keepAliveTimeout) alongside cookies
-    const agent = new CookieAgent({
-      cookies: { jar },
-      keepAliveTimeout: 5000,
-    })
+    const agent = track(
+      new CookieAgent({
+        cookies: { jar },
+        keepAliveTimeout: 5000,
+      }),
+    )
 
     await request(`${server.baseUrl}/set-cookie`, { dispatcher: agent })
     const cookies = jar.getCookiesSync(`${server.baseUrl}/`)
     expect(cookies.length).toBeGreaterThan(0)
 
-    await agent.close()
   })
 
   it('invokes onResponseError when the connection fails', async () => {
     const jar = new CookieJar()
-    const agent = new CookieAgent({ cookies: { jar } })
+    const agent = track(new CookieAgent({ cookies: { jar } }))
 
-    // Port 1 is reserved and will always refuse connections
     await expect(
-      request('http://localhost:1/', { dispatcher: agent }),
+      request(`${server.baseUrl}/abort`, { dispatcher: agent }),
     ).rejects.toThrow()
 
-    await agent.close()
   })
 
   it('handles HTTP upgrade responses via onRequestUpgrade', async () => {
     const jar = new CookieJar()
     jar.setCookieSync('session=abc123', server.baseUrl)
-    const agent = new CookieAgent({ cookies: { jar } })
+    const agent = track(new CookieAgent({ cookies: { jar } }))
 
     const { socket } = await upgrade(server.baseUrl, {
       dispatcher: agent,
-      upgrade: 'websocket',
+      protocol: 'websocket',
     })
     socket.destroy()
 
-    await agent.close()
+    expect(requests.at(-1)?.headers['cookie']).toBe('session=abc123')
   })
 })
 
@@ -219,7 +248,7 @@ describe('CookieAgent (v7/v8)', () => {
 describe('cookie() interceptor (v7/v8)', () => {
   it('stores and sends cookies when composed with a fresh Agent', async () => {
     const jar = new CookieJar()
-    const agent = new Agent().compose(cookie({ cookies: { jar } }))
+    const agent = track(new Agent().compose(cookie({ cookies: { jar } })))
 
     await request(`${server.baseUrl}/set-cookie`, { dispatcher: agent })
 
@@ -231,18 +260,20 @@ describe('cookie() interceptor (v7/v8)', () => {
 
     expect(cookies['session']).toBe('abc123')
 
-    await (agent as Agent).close()
   })
 
   it('can be composed with multiple interceptors', async () => {
     const jar = new CookieJar()
     // Add a custom header interceptor alongside cookie
-    const addHeader = (dispatch: any) => (opts: any, handler: any) => {
-      const headers = { ...(opts.headers ?? {}), 'x-intercepted': 'yes' }
-      return dispatch({ ...opts, headers }, handler)
-    }
+    const addHeader: Dispatcher.DispatcherComposeInterceptor = (dispatch) =>
+      (opts, handler) => {
+        const headers = { ...(opts.headers ?? {}), 'x-intercepted': 'yes' }
+        return dispatch({ ...opts, headers }, handler)
+      }
 
-    const agent = new Agent().compose(cookie({ cookies: { jar } }), addHeader)
+    const agent = track(
+      new Agent().compose(cookie({ cookies: { jar } }), addHeader),
+    )
 
     await request(`${server.baseUrl}/set-cookie`, { dispatcher: agent })
 
@@ -253,8 +284,8 @@ describe('cookie() interceptor (v7/v8)', () => {
     const cookies = parseCookieString(data.cookie)
 
     expect(cookies['session']).toBe('abc123')
+    expect(requests.at(-1)?.headers['x-intercepted']).toBe('yes')
 
-    await (agent as Agent).close()
   })
 })
 
@@ -266,7 +297,7 @@ describe('createCookieAgent() mixin (v7/v8)', () => {
   it('wraps Agent class and handles cookies', async () => {
     const CookieWrapped = createCookieAgent(Agent)
     const jar = new CookieJar()
-    const agent = new CookieWrapped({ cookies: { jar } })
+    const agent = track(new CookieWrapped({ cookies: { jar } }))
 
     await request(`${server.baseUrl}/set-cookie`, { dispatcher: agent })
 
@@ -278,13 +309,34 @@ describe('createCookieAgent() mixin (v7/v8)', () => {
 
     expect(cookies['session']).toBe('abc123')
 
-    await (agent as any).close()
   })
 
   it('throws when no cookies option is provided', () => {
     const CookieWrapped = createCookieAgent(Agent)
     expect(() => new CookieWrapped({ keepAliveTimeout: 1000 })).toThrow(
       /cookies\.jar/,
+    )
+  })
+
+  it('finds cookie options in multi-argument subclass constructors', async () => {
+    class NamedAgent extends Agent {
+      constructor(
+        readonly name: string,
+        options: Agent.Options & { cookies: { jar: CookieJar } },
+      ) {
+        super(options)
+      }
+    }
+
+    const CookieNamedAgent = createCookieAgent(NamedAgent)
+    const jar = new CookieJar()
+    const agent = track(new CookieNamedAgent('test-agent', { cookies: { jar } }))
+
+    await request(`${server.baseUrl}/set-cookie`, { dispatcher: agent })
+
+    expect(agent.name).toBe('test-agent')
+    expect(jar.getCookiesSync(server.baseUrl).map((item) => item.key)).toContain(
+      'session',
     )
   })
 })
@@ -296,7 +348,7 @@ describe('createCookieAgent() mixin (v7/v8)', () => {
 describe('CookieAgent with undici fetch (v7/v8)', () => {
   it('stores and sends cookies across fetch calls', async () => {
     const jar = new CookieJar()
-    const agent = new CookieAgent({ cookies: { jar } })
+    const agent = track(new CookieAgent({ cookies: { jar } }))
 
     await fetch(`${server.baseUrl}/set-cookie`, { dispatcher: agent })
 
@@ -308,6 +360,34 @@ describe('CookieAgent with undici fetch (v7/v8)', () => {
 
     expect(cookies['session']).toBe('abc123')
 
-    await agent.close()
+  })
+
+  it('sends stored cookies across redirects', async () => {
+    const jar = new CookieJar()
+    jar.setCookieSync('redirected=yes; Path=/', server.baseUrl)
+    const agent = track(new CookieAgent({ cookies: { jar } }))
+
+    const response = await fetch(`${server.baseUrl}/redirect`, {
+      dispatcher: agent,
+    })
+    const data = await response.json() as { cookie: string }
+
+    expect(response.url).toBe(`${server.baseUrl}/echo-cookies`)
+    expect(parseCookieString(data.cookie)['redirected']).toBe('yes')
+  })
+
+  it('stores a cookie from a redirect response before following it', async () => {
+    const jar = new CookieJar()
+    const agent = track(new CookieAgent({ cookies: { jar } }))
+
+    const response = await fetch(`${server.baseUrl}/set-and-redirect`, {
+      dispatcher: agent,
+    })
+    const data = await response.json() as { cookie: string }
+
+    expect(parseCookieString(data.cookie)['redirect_cookie']).toBe('xyz')
+    expect(jar.getCookiesSync(server.baseUrl).map((item) => item.key)).toContain(
+      'redirect_cookie',
+    )
   })
 })

@@ -13,6 +13,12 @@ export default defineConfig({
       exclude: [],
       reporter: ['text', 'lcov', 'html'],
       reportsDirectory: './coverage',
+      thresholds: {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
     },
   },
 })
