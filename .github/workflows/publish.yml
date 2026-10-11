@@ -45,4 +45,4 @@ jobs:
         run: npm run build
 
       - name: Publish with provenance
-        run: npm publish --provenance --access public
+        run: npm stage publish --provenance --access public
